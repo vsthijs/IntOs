@@ -1,0 +1,12 @@
+iso_root/
+.cache/
+
+# compiler output
+*.elf
+*.iso
+*.o
+*.d
+*.a
+
+# limine shortcut/repo (required to build)
+limine

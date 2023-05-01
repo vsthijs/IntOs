@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# ./dbg: script for fast debbugging with qemu
+
+make clean
+make qemu
+make clean
