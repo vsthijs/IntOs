@@ -1,147 +1,111 @@
 #include "memory.h"
 #include <bitmap.h>
 #include <limine.h>
-#include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 // request
+typedef struct limine_memmap_entry memmap_entry_t;
+struct limine_memmap_response *memmap;
 static volatile struct limine_memmap_request memmap_request = {
     .id = LIMINE_MEMMAP_REQUEST, .revision = 1};
 
-struct limine_memmap_response *memmap_response;
+memman_t memman_new() {
+    static int initialized = 0;
 
-bool _memmap_is_initialized;
-
-bool memmap_is_initialized() { return _memmap_is_initialized; }
-
-uint64_t total_memory = 0;
-uint64_t total_pages = 0;
-uint64_t usable_memory = 0;
-uint64_t usable_pages = 0;
-
-bitmap_t page_usage_map;
-
-size_t memmap_get_usable_pages_c() { return usable_pages; }
-
-// TODO: implement
-struct limine_memmap_entry *page_to_entry(size_t page);
-
-void memmap_init() {
-    printf("initializing memmap {\n");
+    if (initialized > 0) {
+        printf("kernel/memory: error: memman already initialized\n");
+    }
+    printf("initializing memman {\n");
     if (memmap_request.response == NULL) {
         printf("} failed\n");
-        return;
+        return (memman_t){0};
     }
-    memmap_response = memmap_request.response;
 
-    total_memory = 0;
-    total_pages = 0;
-    usable_memory = 0;
-    usable_pages = 0;
+    memmap = memmap_request.response;
 
-    uint64_t not_perf = 0; // incomplete pages
-    uint64_t best_page = 0;
+    size_t total_pages = 0;
+    size_t usable_pages = 0;
 
-    for (size_t ii = 0; ii < memmap_request.response->entry_count; ii++) {
-        struct limine_memmap_entry *entry =
-            memmap_request.response->entries[ii];
+    // TASK 1 (loop entries and get page count)
+    for (size_t ii = 0; ii < memmap->entry_count; ii++) {
+        memmap_entry_t *entry = memmap->entries[ii];
+        size_t pages = entry->length / 4096;
         if (entry->type == LIMINE_MEMMAP_USABLE) {
-            best_page = total_pages + 1;
-            usable_memory += entry->length;
-            if (entry->length % 4096 != 0) {
-                not_perf++;
-            }
-            usable_pages += entry->length / 4096;
-            printf("  found entry: [%p + %dll]\n", entry->base, entry->length);
+            usable_pages += pages;
         }
-        total_pages += entry->length / 4096;
-        total_memory += entry->length;
+        total_pages += pages;
     }
 
-    uint64_t bitmap_size = total_pages / 8 + 1;
-    uint64_t bitmap_page_size = bitmap_size / 4096;
-    if (bitmap_size % 4096 > 0)
+    // TASK 2 (calculate bitmap size)
+    size_t bitmap_byte_size = total_pages / 8;
+    if (total_pages % 8 > 0)
+        bitmap_byte_size++;
+
+    size_t bitmap_page_size = bitmap_byte_size / 4096;
+    if (bitmap_byte_size % 4096 > 0)
         bitmap_page_size++;
-    page_usage_map = bitmap_new(memmap_get_page(best_page), total_pages);
-    for (size_t ii = best_page; ii < bitmap_page_size; ii++) {
-        bitmap_set(&page_usage_map, ii, true);
+
+    printf("  bm bytesize = %dll; bm pagesize = %dll;\n", bitmap_byte_size,
+           bitmap_page_size);
+    if (bitmap_page_size >= usable_pages) {
+        printf("  kernel/memory: fatal: sufficient available memory to "
+               "allocate page map (%dll available, %dll needed)\n} failed\n",
+               usable_pages, bitmap_page_size);
+        abort();
     }
+
+    // TASK 3 (find best page(s) to store bitmap)
     size_t page_index = 0;
-    for (size_t ii = 0; ii < memmap_response->entry_count; ii++) {
-        struct limine_memmap_entry *entry = memmap_response->entries[ii];
-        for (size_t jj = 0; jj < entry->length; jj += 4096) {
-            if (entry->type != LIMINE_MEMMAP_USABLE) {
-                bitmap_set(&page_usage_map, page_index, true);
-            }
-            page_index++;
-        }
-    }
-    // printf("\n\n");
-    // bitmap_print(&page_usage_map);
-    // printf("\n\n");
-
-    printf("\n  total memory:  %dll MiB\n", total_memory / (1024 * 1024));
-    printf("  usable memory: %dll MiB\n", usable_memory / (1024 * 1024));
-    printf("  total pages: %dll\n", total_pages);
-    printf("  usable pages:  %dll\n", usable_pages);
-    if (not_perf > 0) {
-        printf("  ERR: found incomplete page\n} failed\n");
-        return;
-    }
-
-    printf("} success\n");
-    _memmap_is_initialized = true;
-}
-
-void *memmap_get_usable_page(size_t index) {
-    if (!(index < usable_pages)) {
-        return NULL;
-    }
-
-    size_t curr_index = 0;
-    for (size_t ii = 0; ii < memmap_response->entry_count; ii++) {
-        struct limine_memmap_entry *entry = memmap_response->entries[ii];
+    void *found_page = NULL;
+    for (size_t ii = 0; ii < memmap->entry_count; ii++) {
+        memmap_entry_t *entry = memmap->entries[ii];
         if (entry->type == LIMINE_MEMMAP_USABLE) {
-            if ((entry->length / 4096) + curr_index > index) {
-                size_t rel_index = index - curr_index;
-                for (size_t jj = 0; jj < entry->length / 4096; jj++) {
-                    if (jj == rel_index) {
-                        return (void *)((char *)entry->base + jj);
-                    }
-                }
-            } else {
-                curr_index += entry->length / 4096;
+            if (entry->length / 4096 >= bitmap_page_size) {
+                found_page = (void *)entry->base;
+                break;
             }
         }
+        page_index += entry->length / 4096;
+    }
+    if (found_page == NULL) {
+        printf("  kernel/memory: fatal: sufficient available memory to "
+               "allocate page map (%dll available, %dll needed)\n} failed\n",
+               usable_pages, bitmap_page_size);
+        abort();
     }
 
-    printf("kernel/memory/get_page: error: could not find page '%dll'\n",
-           index);
-    return NULL;
-}
+    // TASK 4 (initialize bitmap)
+    memman_t mm = {.total_page_c = total_pages,
+                   .page_map = (bitmap_t){found_page, total_pages}};
 
-void *memmap_get_page(size_t index) {
-    if (!(index < usable_pages)) {
-        return NULL;
-    }
-
-    size_t curr_index = 0;
-    for (size_t ii = 0; ii < memmap_response->entry_count; ii++) {
-        struct limine_memmap_entry *entry = memmap_response->entries[ii];
-        if ((entry->length / 4096) + curr_index > index) {
-            size_t rel_index = index - curr_index;
-            for (size_t jj = 0; jj < entry->length / 4096; jj++) {
-                if (jj == rel_index) {
-                    return (void *)((char *)entry->base + jj);
-                }
+    // TASK 5 (loop through pages and set bitmap)
+    printf("  indexing memory {\n");
+    size_t bitmap_page_index = page_index;
+    page_index = 0;
+    for (size_t ii = 0; ii < memmap->entry_count; ii++) {
+        memmap_entry_t *entry = memmap->entries[ii];
+        size_t pages_start = page_index;
+        size_t pages_end = pages_start + (entry->length / 4096);
+        if (entry->type != LIMINE_MEMMAP_USABLE) {
+            for (size_t jj = pages_start; jj < pages_end; jj++) {
+                bitmap_set(&mm.page_map, jj, true); // true = not usable
             }
         } else {
-            curr_index += entry->length / 4096;
+            printf("    found %dll usable pages\n", pages_end - pages_start);
+            for (size_t jj = pages_start; jj < pages_end; jj++) {
+                if ((bitmap_page_index <= jj) ||
+                    (bitmap_page_index + bitmap_page_size >= jj))
+                    bitmap_set(&mm.page_map, jj, true); // used by bitmap
+                else
+                    bitmap_set(&mm.page_map, jj, false); // false = usable
+            }
         }
     }
+    printf("  } success\n");
+    printf("} success\n");
 
-    printf("kernel/memory/get_page: error: could not find page '%dll'\n",
-           index);
-    return NULL;
+    initialized++;
+    return mm;
 }

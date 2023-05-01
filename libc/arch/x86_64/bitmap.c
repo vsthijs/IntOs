@@ -38,6 +38,22 @@ void bitmap_print(bitmap_t *self) {
     printf("\n");
 }
 
+void bitmap_print_compact(bitmap_t *self) {
+    bool val = false;
+    size_t count = 0;
+    for (size_t ii = 0; ii < self->size; ii++) {
+        if (bitmap_get(self, ii) != val) {
+            if (count > 0) {
+                printf("%d * %dll\n", val, count);
+            }
+            count = 0;
+            val = bitmap_get(self, ii);
+        }
+        count++;
+    }
+    printf("%d * %dll\n", val, count);
+}
+
 void bitmap_test() {
     printf("testing bitmap {\n");
     char bmbase[2] = {0};
