@@ -51,4 +51,7 @@ void page_table_man_map_mem(page_table_man_t *self, void *vmem, void *pmem) {
     } else {
         pt = (pagetable_t *)((uint64_t)pde.address << 12);
     }
+
+    pde = pt->entries[indexer.page_index];
+    // TODO: continue
 }
