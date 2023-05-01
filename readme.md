@@ -15,4 +15,3 @@ built on [Limine Bare Bones](https://wiki.osdev.org/Limine_Bare_Bones).
 6. [ ] use framebuffer instead of deprecated limine terminal.
 
 # TODOs:
-1. multipage bitmap. (`kernel/memory/memman_new`) `// TASK 3`

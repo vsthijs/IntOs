@@ -63,7 +63,7 @@ $(LIBK):
 # run using qemu
 .PHONY: qemu
 qemu: $(ISO)
-	qemu-system-x86_64 -cdrom $(ISO) -m 7M
+	qemu-system-x86_64 -cdrom $(ISO) -m 256M
 
 .PHONY: clean
 clean:
