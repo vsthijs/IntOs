@@ -109,8 +109,7 @@ int printf(const char *restrict format, ...) {
                 if (*format == 'h') {
                     // char
                     format++;
-                    const char *str =
-                        i64_str((int64_t)va_arg(parameters, char));
+                    const char *str = i64_str((int64_t)va_arg(parameters, int));
                     size_t len = strlen(str);
                     if (maxrem < len) {
                         // TODO: Set errno to EOVERFLOW.
@@ -123,8 +122,7 @@ int printf(const char *restrict format, ...) {
                 } else {
                     // short
                     format++;
-                    const char *str =
-                        i64_str((int64_t)va_arg(parameters, short));
+                    const char *str = i64_str((int64_t)va_arg(parameters, int));
                     size_t len = strlen(str);
                     if (maxrem < len) {
                         // TODO: Set errno to EOVERFLOW.
@@ -176,7 +174,7 @@ int printf(const char *restrict format, ...) {
                     // char
                     format++;
                     const char *str =
-                        u8_hex((uint8_t)va_arg(parameters, unsigned char));
+                        u8_hex((uint8_t)va_arg(parameters, unsigned int));
                     size_t len = strlen(str);
                     if (maxrem < len) {
                         // TODO: Set errno to EOVERFLOW.
@@ -190,7 +188,7 @@ int printf(const char *restrict format, ...) {
                     // short
                     format++;
                     const char *str =
-                        u16_hex((uint16_t)va_arg(parameters, unsigned short));
+                        u16_hex((uint16_t)va_arg(parameters, unsigned int));
                     size_t len = strlen(str);
                     if (maxrem < len) {
                         // TODO: Set errno to EOVERFLOW.

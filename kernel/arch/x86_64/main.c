@@ -23,6 +23,4 @@ void main_x86_64() {
     bitmap_test();
     printf("\n");
 #endif
-
-    printf("\nWelcome to Int OS (%s)\n\n", _TARGET_NAME);
 }
